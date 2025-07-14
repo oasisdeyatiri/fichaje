@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Formulario de Limpieza</title>
+  <script>
+    function getDeviceId() {
+      let deviceId = localStorage.getItem("device_id");
+      if (!deviceId) {
+        deviceId = "device-" + Math.random().toString(36).substr(2, 9); // Genera un ID aleatorio
+        localStorage.setItem("device_id", deviceId);
+      }
+      return encodeURIComponent(deviceId);
+    }
+
+    window.onload = function() {
+      let userAgent = encodeURIComponent(navigator.userAgent); // Captura el User-Agent
+      let deviceId = getDeviceId(); // Obtiene el ID único del dispositivo
+
+      if (navigator.geolocation) {
+        navigator.geolocation.getCurrentPosition(function(position) {
+          var lat = position.coords.latitude;
+          var lon = position.coords.longitude;
+          
+          // Redirigir al formulario con los datos capturados
+          var formularioURL = "https://docs.google.com/forms/d/e/1FAIpQLSfrIG5KNPTHWSOUgKpcBNJcx_CqIyhg-3SfHrMb1LvpyKjLUw/viewform?usp=pp_url&entry.773562869=María+Fernández&entry.343243776=Retiro+de+basura+y+limpieza+de+cuarto+de+basuras+y+tachos" + 
+              "&entry.1232260744=" + lat + "," + lon +  // Ubicación
+              "&entry.1038709914=" + userAgent +        // User-Agent
+              "&entry.163900101=" + deviceId;          // Device ID
+
+          window.location.href = formularioURL;
+        }, function(error) {
+          alert("No se pudo obtener la ubicación.");
+        });
+      } else {
+        alert("Geolocalización no soportada por tu navegador.");
+      }
+    };
+  </script>
+</head>
+<body>
+  <h1>Redirigiendo al formulario...</h1>
+</body>
+</html>
