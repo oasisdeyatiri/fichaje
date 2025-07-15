@@ -4,42 +4,131 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Formulario de Limpieza</title>
+  <style>
+    #redirectContainer {
+      text-align: center;
+      padding: 20px;
+      font-family: Arial, sans-serif;
+    }
+    #manualRedirect {
+      display: none;
+      margin-top: 20px;
+      padding: 10px;
+      background-color: #f0f0f0;
+      border-radius: 5px;
+    }
+    #manualRedirect a {
+      color: #0066cc;
+      text-decoration: none;
+      font-weight: bold;
+    }
+    .spinner {
+      border: 5px solid #f3f3f3;
+      border-top: 5px solid #3498db;
+      border-radius: 50%;
+      width: 50px;
+      height: 50px;
+      animation: spin 1s linear infinite;
+      margin: 20px auto;
+    }
+    @keyframes spin {
+      0% { transform: rotate(0deg); }
+      100% { transform: rotate(360deg); }
+    }
+  </style>
+</head>
+<body>
+  <div id="redirectContainer">
+    <h1>Redirigiendo al formulario...</h1>
+    <div class="spinner"></div>
+    <div id="manualRedirect">
+      <p>Si la redirección no funciona automáticamente en 5 segundos:</p>
+      <p><a id="manualLink" href="#">Haz clic aquí para continuar</a></p>
+    </div>
+  </div>
+
   <script>
     function getDeviceId() {
       let deviceId = localStorage.getItem("device_id");
       if (!deviceId) {
-        deviceId = "device-" + Math.random().toString(36).substr(2, 9); // Genera un ID aleatorio
+        deviceId = "device-" + Math.random().toString(36).substr(2, 9);
         localStorage.setItem("device_id", deviceId);
       }
       return encodeURIComponent(deviceId);
     }
 
-    window.onload = function() {
-      let userAgent = encodeURIComponent(navigator.userAgent); // Captura el User-Agent
-      let deviceId = getDeviceId(); // Obtiene el ID único del dispositivo
+    function buildFormUrl(lat, lon, userAgent, deviceId) {
+      return "https://docs.google.com/forms/d/e/1FAIpQLSfrIG5KNPTHWSOUgKpcBNJcx_CqIyhg-3SfHrMb1LvpyKjLUw/viewform?usp=pp_url" + 
+        "&entry.773562869=María+Fernández" +
+        "&entry.343243776=Retiro+de+basura+y+aseo+de+cuarto+de+basuras+y+tachos" +
+        "&entry.1232260744=" + lat + "," + lon +
+        "&entry.1038709914=" + userAgent +
+        "&entry.163900101=" + deviceId +
+        "&embedded=true"; // Añadido embedded para mejor compatibilidad
+    }
+
+    function redirectToForm(url) {
+      // Mostrar opción manual después de 3 segundos
+      setTimeout(() => {
+        document.getElementById("manualRedirect").style.display = "block";
+        document.getElementById("manualLink").href = url;
+      }, 3000);
+      
+      // Intentar redirección automática
+      setTimeout(() => {
+        window.location.href = url;
+      }, 100); // Pequeño delay para evitar bloqueos
+    }
+
+    function init() {
+      const userAgent = encodeURIComponent(navigator.userAgent);
+      const deviceId = getDeviceId();
+      
+      // Mostrar opción manual inmediatamente si es Samsung
+      if (/SamsungBrowser/i.test(navigator.userAgent)) {
+        document.getElementById("manualRedirect").style.display = "block";
+      }
 
       if (navigator.geolocation) {
-        navigator.geolocation.getCurrentPosition(function(position) {
-          var lat = position.coords.latitude;
-          var lon = position.coords.longitude;
-          
-          // Redirigir al formulario con los datos capturados
-          var formularioURL = "https://docs.google.com/forms/d/e/1FAIpQLSfrIG5KNPTHWSOUgKpcBNJcx_CqIyhg-3SfHrMb1LvpyKjLUw/viewform?usp=pp_url&entry.773562869=María+Fernández&entry.343243776=Retiro+de+basura+y+aseo+de+cuarto+de+basuras+y+tachos" + 
-              "&entry.1232260744=" + lat + "," + lon +  // Ubicación
-              "&entry.1038709914=" + userAgent +        // User-Agent
-              "&entry.163900101=" + deviceId;          // Device ID
-
-          window.location.href = formularioURL;
-        }, function(error) {
-          alert("No se pudo obtener la ubicación.");
-        });
+        navigator.geolocation.getCurrentPosition(
+          (position) => {
+            const formUrl = buildFormUrl(
+              position.coords.latitude,
+              position.coords.longitude,
+              userAgent,
+              deviceId
+            );
+            
+            // Guardar en sessionStorage por si falla la redirección
+            sessionStorage.setItem("formData", JSON.stringify({
+              lat: position.coords.latitude,
+              lon: position.coords.longitude,
+              userAgent: userAgent,
+              deviceId: deviceId
+            }));
+            
+            redirectToForm(formUrl);
+          },
+          (error) => {
+            console.error("Error de geolocalización:", error);
+            // Usar valores por defecto si falla la geolocalización
+            const formUrl = buildFormUrl(0, 0, userAgent, deviceId);
+            redirectToForm(formUrl);
+          },
+          {
+            timeout: 5000, // Timeout de 5 segundos
+            maximumAge: 60000 // Usar ubicación cacheada de hasta 1 minuto
+          }
+        );
       } else {
-        alert("Geolocalización no soportada por tu navegador.");
+        // Navegador sin soporte de geolocalización
+        const formUrl = buildFormUrl(0, 0, userAgent, deviceId);
+        redirectToForm(formUrl);
       }
-    };
+    }
+
+    // Iniciar cuando el DOM esté listo
+    document.addEventListener("DOMContentLoaded", init);
   </script>
-</head>
-<body>
-  <h1>Redirigiendo al formulario...</h1>
 </body>
 </html>
