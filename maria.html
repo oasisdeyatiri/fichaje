@@ -3,24 +3,12 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Formulario de Limpieza</title>
+  <title>Redirección al Formulario</title>
   <style>
-    #redirectContainer {
+    body {
+      font-family: Arial, sans-serif;
       text-align: center;
       padding: 20px;
-      font-family: Arial, sans-serif;
-    }
-    #manualRedirect {
-      display: none;
-      margin-top: 20px;
-      padding: 10px;
-      background-color: #f0f0f0;
-      border-radius: 5px;
-    }
-    #manualRedirect a {
-      color: #0066cc;
-      text-decoration: none;
-      font-weight: bold;
     }
     .spinner {
       border: 5px solid #f3f3f3;
@@ -35,100 +23,148 @@
       0% { transform: rotate(0deg); }
       100% { transform: rotate(360deg); }
     }
+    #fallback-message {
+      display: none;
+      margin-top: 20px;
+      padding: 15px;
+      background-color: #f8f9fa;
+      border-radius: 5px;
+    }
+    #fallback-link {
+      display: inline-block;
+      margin-top: 10px;
+      padding: 10px 15px;
+      background-color: #4285f4;
+      color: white;
+      text-decoration: none;
+      border-radius: 4px;
+    }
   </style>
 </head>
 <body>
-  <div id="redirectContainer">
-    <h1>Redirigiendo al formulario...</h1>
-    <div class="spinner"></div>
-    <div id="manualRedirect">
-      <p>Si la redirección no funciona automáticamente en 5 segundos:</p>
-      <p><a id="manualLink" href="#">Haz clic aquí para continuar</a></p>
-    </div>
+  <h1>Preparando el formulario...</h1>
+  <div class="spinner"></div>
+  
+  <div id="fallback-message">
+    <p>Parece que la redirección automática no está funcionando.</p>
+    <a id="fallback-link" href="#">Continuar al formulario</a>
   </div>
 
   <script>
+    // Configuración
+    const MAX_RETRIES = 3;
+    const FALLBACK_DELAY = 5000; // 5 segundos
+    
+    // Datos del formulario base
+    const FORM_BASE_URL = "https://docs.google.com/forms/d/e/1FAIpQLSfrIG5KNPTHWSOUgKpcBNJcx_CqIyhg-3SfHrMb1LvpyKjLUw/viewform";
+    const FORM_PARAMS = {
+      "entry.773562869": "María Fernández",
+      "entry.343243776": "Retiro de basura y aseo de cuarto de basuras y tachos",
+      "entry.1232260744": "", // Latitud,Longitud
+      "entry.1038709914": "", // User Agent
+      "entry.163900101": ""  // Device ID
+    };
+
+    // Generar ID de dispositivo persistente
     function getDeviceId() {
       let deviceId = localStorage.getItem("device_id");
       if (!deviceId) {
-        deviceId = "device-" + Math.random().toString(36).substr(2, 9);
+        deviceId = "device-" + Date.now() + "-" + Math.random().toString(36).substr(2, 6);
         localStorage.setItem("device_id", deviceId);
       }
-      return encodeURIComponent(deviceId);
+      return deviceId;
     }
 
-    function buildFormUrl(lat, lon, userAgent, deviceId) {
-      return "https://docs.google.com/forms/d/e/1FAIpQLSfrIG5KNPTHWSOUgKpcBNJcx_CqIyhg-3SfHrMb1LvpyKjLUw/viewform?usp=pp_url" + 
-        "&entry.773562869=María+Fernández" +
-        "&entry.343243776=Retiro+de+basura+y+aseo+de+cuarto+de+basuras+y+tachos" +
-        "&entry.1232260744=" + lat + "," + lon +
-        "&entry.1038709914=" + userAgent +
-        "&entry.163900101=" + deviceId +
-        "&embedded=true"; // Añadido embedded para mejor compatibilidad
-    }
-
-    function redirectToForm(url) {
-      // Mostrar opción manual después de 3 segundos
-      setTimeout(() => {
-        document.getElementById("manualRedirect").style.display = "block";
-        document.getElementById("manualLink").href = url;
-      }, 3000);
+    // Construir URL del formulario
+    function buildFormUrl(data) {
+      const params = new URLSearchParams();
       
-      // Intentar redirección automática
-      setTimeout(() => {
-        window.location.href = url;
-      }, 100); // Pequeño delay para evitar bloqueos
-    }
-
-    function init() {
-      const userAgent = encodeURIComponent(navigator.userAgent);
-      const deviceId = getDeviceId();
+      // Añadir parámetros fijos
+      params.append("usp", "pp_url");
       
-      // Mostrar opción manual inmediatamente si es Samsung
-      if (/SamsungBrowser/i.test(navigator.userAgent)) {
-        document.getElementById("manualRedirect").style.display = "block";
+      // Añadir parámetros dinámicos
+      for (const [key, value] of Object.entries(FORM_PARAMS)) {
+        params.append(key, value || data[key.substring(6)] || "");
       }
+      
+      return `${FORM_BASE_URL}?${params.toString()}&embedded=true`;
+    }
 
-      if (navigator.geolocation) {
-        navigator.geolocation.getCurrentPosition(
-          (position) => {
-            const formUrl = buildFormUrl(
-              position.coords.latitude,
-              position.coords.longitude,
-              userAgent,
-              deviceId
-            );
+    // Estrategia de redirección robusta
+    function safeRedirect(url) {
+      // Almacenar URL en múltiples lugares por redundancia
+      sessionStorage.setItem("pending_redirect", url);
+      localStorage.setItem("last_redirect_attempt", url);
+      
+      // Intentar redirección múltiple
+      setTimeout(() => { window.location.href = url; }, 100);
+      setTimeout(() => { window.location.replace(url); }, 300);
+      
+      // Mostrar opción manual después de un tiempo
+      setTimeout(() => {
+        document.getElementById("fallback-message").style.display = "block";
+        document.getElementById("fallback-link").href = url;
+      }, FALLBACK_DELAY);
+    }
+
+    // Manejo de geolocalización con reintentos
+    function getLocationWithRetry(retryCount = 0) {
+      const locationOptions = {
+        enableHighAccuracy: true,
+        timeout: 10000, // 10 segundos
+        maximumAge: 0 // No usar caché
+      };
+      
+      navigator.geolocation.getCurrentPosition(
+        (position) => {
+          const formData = {
+            lat: position.coords.latitude,
+            lon: position.coords.longitude,
+            userAgent: encodeURIComponent(navigator.userAgent),
+            deviceId: encodeURIComponent(getDeviceId())
+          };
+          
+          // Actualizar parámetros
+          FORM_PARAMS["entry.1232260744"] = `${formData.lat},${formData.lon}`;
+          FORM_PARAMS["entry.1038709914"] = formData.userAgent;
+          FORM_PARAMS["entry.163900101"] = formData.deviceId;
+          
+          // Registrar en consola para depuración
+          console.log("Datos capturados:", formData);
+          
+          // Redirigir
+          safeRedirect(buildFormUrl(formData));
+        },
+        (error) => {
+          console.error(`Error de geolocalización (intento ${retryCount + 1}):`, error);
+          
+          if (retryCount < MAX_RETRIES - 1) {
+            setTimeout(() => getLocationWithRetry(retryCount + 1), 1000 * (retryCount + 1));
+          } else {
+            // Fallback sin ubicación
+            FORM_PARAMS["entry.1232260744"] = "0,0";
+            FORM_PARAMS["entry.1038709914"] = encodeURIComponent(navigator.userAgent);
+            FORM_PARAMS["entry.163900101"] = encodeURIComponent(getDeviceId());
             
-            // Guardar en sessionStorage por si falla la redirección
-            sessionStorage.setItem("formData", JSON.stringify({
-              lat: position.coords.latitude,
-              lon: position.coords.longitude,
-              userAgent: userAgent,
-              deviceId: deviceId
-            }));
-            
-            redirectToForm(formUrl);
-          },
-          (error) => {
-            console.error("Error de geolocalización:", error);
-            // Usar valores por defecto si falla la geolocalización
-            const formUrl = buildFormUrl(0, 0, userAgent, deviceId);
-            redirectToForm(formUrl);
-          },
-          {
-            timeout: 5000, // Timeout de 5 segundos
-            maximumAge: 60000 // Usar ubicación cacheada de hasta 1 minuto
+            safeRedirect(buildFormUrl({}));
           }
-        );
-      } else {
-        // Navegador sin soporte de geolocalización
-        const formUrl = buildFormUrl(0, 0, userAgent, deviceId);
-        redirectToForm(formUrl);
-      }
+        },
+        locationOptions
+      );
     }
 
-    // Iniciar cuando el DOM esté listo
-    document.addEventListener("DOMContentLoaded", init);
+    // Inicialización
+    document.addEventListener("DOMContentLoaded", () => {
+      // Mostrar opción manual inmediatamente para navegadores problemáticos
+      if (/SamsungBrowser|Android.*Version\/(9|10)/i.test(navigator.userAgent)) {
+        setTimeout(() => {
+          document.getElementById("fallback-message").style.display = "block";
+        }, 1000);
+      }
+      
+      // Iniciar proceso de geolocalización
+      getLocationWithRetry();
+    });
   </script>
 </body>
 </html>
